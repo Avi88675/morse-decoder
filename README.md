@@ -33,7 +33,7 @@ Built as a learning project. The code is intentionally readable and well-comment
 ## Quick Start (Mac)
 
 ```bash
-git clone https://github.com/yourname/morse-decoder
+git clone https://github.com/Avi88675/morse-decoder
 cd morse-decoder
 chmod +x setup_mac.sh
 ./setup_mac.sh
@@ -49,6 +49,34 @@ python main.py --device 'BlackHole 2ch' --port 5001
 ```
 
 Open `http://localhost:5001` in your browser.
+
+---
+
+## Quick Start (Windows)
+
+Open PowerShell as administrator, allow scripts to run, then run the setup:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+.\setup_windows.ps1
+```
+
+The script installs Python 3.12 via winget if needed, creates a virtual environment, and installs all dependencies. It then prints instructions for VB-Cable (virtual audio) and Zadig (RTL-SDR driver).
+
+Activate the environment and run:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python main.py --device 'CABLE Output' --port 5001
+```
+
+Open `http://localhost:5001` in your browser.
+
+**Windows-specific notes:**
+- Use **VB-Cable** instead of BlackHole — free from [vb-audio.com/Cable](https://vb-audio.com/Cable/)
+- Set Windows sound output to **CABLE Input** while testing, then switch back when done
+- RTL-SDR requires replacing the default USB driver with WinUSB via [Zadig](https://zadig.akeo.ie/) — the setup script explains the steps
+- The `morse` shortcut goes in your PowerShell `$PROFILE` instead of `.zprofile`
 
 ---
 
