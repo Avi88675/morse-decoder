@@ -1,0 +1,22 @@
+# Morse Decoder - Python Dependencies
+#
+# Install with: pip install -r requirements.txt
+# (after activating your venv: source venv/bin/activate)
+
+# Audio input (cross-platform, much easier than pyaudio on Mac)
+sounddevice>=0.4.6
+
+# Signal processing
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Web UI server
+flask>=3.0.0
+flask-socketio>=5.3.6
+
+# Home Assistant / MQTT integration (optional but recommended)
+paho-mqtt>=1.6.1
+
+# RTL-SDR support
+# Requires: brew install librtlsdr  (already done by setup_mac.sh)
+pyrtlsdr>=0.3.0
