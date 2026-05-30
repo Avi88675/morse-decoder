@@ -229,6 +229,8 @@ MIT — do whatever you like with it, but a callsign mention in your QRZ page wo
 
 ## Acknowledgements
 
+This project was co-developed with [Claude](https://claude.ai) (Anthropic's AI assistant) in a single afternoon session. The architecture decisions, algorithm choices, debugging approach, and all the iterative fixes — adaptive Goertzel threshold, two-pass bootstrap, audio-time timing fix — came out of a back-and-forth conversation while testing live against real signals. The code is mine to publish and yours to use, but it wouldn't exist without that collaboration, and it didn't feel right not to say so.
+
 Tested live against the CQ WPX CW Contest, May 2026. Stations decoded include EI7M (Ireland), OK5D (Czech Republic), TM1A (France), UX2HB (Ukraine), LY1M (Lithuania), RM3F (Russia), and others. Not bad for a first afternoon.
 
-73 de your-callsign-here
+73 de (I don't have a callsign yet, but I will soon!)
