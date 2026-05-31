@@ -193,12 +193,52 @@
     }
 
     #log-header {
-      padding: 8px 14px;
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .tab-btn {
+      font-family: 'VT323', monospace;
+      font-size: 15px;
+      letter-spacing: 2px;
+      padding: 3px 8px;
+      cursor: pointer;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--green-mid);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .tab-btn.active {
+      color: var(--green);
+      border-bottom-color: var(--green);
+    }
+    .tab-btn:hover { color: var(--green); }
+
+    /* Callsign entry */
+    .cs-entry {
+      padding: 5px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .cs-call {
       font-family: 'VT323', monospace;
       font-size: 17px;
-      letter-spacing: 3px;
-      color: var(--green-mid);
-      border-bottom: 1px solid var(--border);
+      color: var(--amber);
+      text-shadow: 0 0 6px var(--amber);
+      letter-spacing: 1px;
+    }
+    .cs-country { color: var(--green-mid); margin-left: 4px; font-size: 11px; }
+    .cs-time    { color: var(--green-dim); font-size: 10px; }
+    .cs-count   { color: var(--green-dim); font-size: 10px; }
+
+    /* Callsign highlights in main output */
+    .cs-highlight {
+      color: var(--amber);
+      text-shadow: 0 0 6px var(--amber);
     }
 
     #log-list {
@@ -299,8 +339,12 @@
     </div>
 
     <div id="log-pane">
-      <div id="log-header">TRAFFIC LOG</div>
+      <div id="log-header">
+        <button class="tab-btn active" id="tab-log" onclick="switchTab('log')">TRAFFIC LOG</button>
+        <button class="tab-btn" id="tab-cs"  onclick="switchTab('cs')">CALLSIGNS <span id="cs-count"></span></button>
+      </div>
       <div id="log-list"></div>
+      <div id="cs-list" style="display:none;flex:1;overflow-y:auto;padding:6px 0"></div>
     </div>
 
   </div>
@@ -320,38 +364,69 @@
   const output      = document.getElementById('decode-output');
   const decodePane  = document.getElementById('decode-pane');
   const logList     = document.getElementById('log-list');
+  const csList      = document.getElementById('cs-list');
   const keyDot      = document.getElementById('key-indicator');
   const overlay     = document.getElementById('conn-overlay');
 
   const MAX_CHARS = 2000;
 
-  function appendChar(ch) {
-    // Remove cursor, add character span, re-add cursor
+  // Callsign regex — mirrors server-side pattern
+  const CS_PAT = /^([A-Z][A-Z0-9]?[0-9][A-Z]{1,4}|[0-9][A-Z][0-9][A-Z]{1,4})$/;
+
+  // ── Word buffering for callsign highlighting ───────────────
+  let wordBuf = '';
+
+  function handleChar(ch) {
+    if (ch === ' ') {
+      flushWord();
+      insertNode(' ');
+    } else {
+      wordBuf += ch;
+    }
+  }
+
+  function flushWord() {
+    if (!wordBuf) return;
+    if (CS_PAT.test(wordBuf)) {
+      const span = document.createElement('span');
+      span.className = 'cs-highlight char-new';
+      span.textContent = wordBuf;
+      insertNode(span);
+    } else {
+      insertNode(wordBuf);
+    }
+    wordBuf = '';
+  }
+
+  function insertNode(content) {
     const cursor = output.querySelector('.cursor');
     if (cursor) cursor.remove();
 
-    const span = document.createElement('span');
-    span.className = 'char-new';
-    span.textContent = ch;
-    output.appendChild(span);
+    if (typeof content === 'string') {
+      const span = document.createElement('span');
+      span.className = 'char-new';
+      span.textContent = content;
+      output.appendChild(span);
+    } else {
+      output.appendChild(content);
+    }
 
     const newCursor = document.createElement('span');
     newCursor.className = 'cursor';
     output.appendChild(newCursor);
 
-    // Trim old content if too long
-    const text = output.textContent;
-    if (text.length > MAX_CHARS) {
+    // Trim if too long
+    if (output.textContent.length > MAX_CHARS) {
+      const keep = output.textContent.slice(-1500);
       output.innerHTML = '';
-      const trimmed = document.createElement('span');
-      trimmed.textContent = text.slice(-1500);
-      output.appendChild(trimmed);
+      const t = document.createElement('span');
+      t.textContent = keep;
+      output.appendChild(t);
       const c2 = document.createElement('span');
       c2.className = 'cursor';
       output.appendChild(c2);
     }
 
-    // Auto-scroll
     decodePane.scrollTop = decodePane.scrollHeight;
   }
 
@@ -391,9 +466,54 @@
     overlay.textContent = 'DISCONNECTED — RECONNECTING...';
   });
 
-  // Real-time decoded characters
+  // Real-time decoded characters — word-buffered for callsign highlighting
   socket.on('character', data => {
-    appendChar(data.char);
+    handleChar(data.char);
+  });
+
+  // ── Tab switching ──────────────────────────────────────────
+  function switchTab(tab) {
+    document.getElementById('tab-log').classList.toggle('active', tab === 'log');
+    document.getElementById('tab-cs').classList.toggle('active',  tab === 'cs');
+    logList.style.display = tab === 'log' ? 'block' : 'none';
+    csList.style.display  = tab === 'cs'  ? 'block' : 'none';
+  }
+
+  // ── Callsign panel ─────────────────────────────────────────
+  const csMap = {};   // callsign → DOM element
+
+  socket.on('callsign', entry => {
+    const cs = entry.callsign;
+    const time = new Date(entry.last_seen * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+    if (csMap[cs]) {
+      // Update existing entry
+      const el = csMap[cs];
+      el.querySelector('.cs-time').textContent  = time;
+      el.querySelector('.cs-count').textContent = entry.count > 1 ? `×${entry.count}` : '';
+      // Move to top
+      csList.prepend(el);
+    } else {
+      // New entry
+      const el = document.createElement('div');
+      el.className = 'cs-entry';
+      el.innerHTML =
+        `<div>` +
+        `<span class="cs-call">${escapeHtml(cs)}</span>` +
+        `<span class="cs-country">${entry.flag} ${escapeHtml(entry.country)}</span>` +
+        `</div>` +
+        `<div>` +
+        `<span class="cs-time">${time}</span>` +
+        `<span class="cs-count" style="margin-left:6px">${entry.count > 1 ? '×'+entry.count : ''}</span>` +
+        (entry.frequency_mhz ? `<span style="float:right;color:var(--green-dim)">${entry.frequency_mhz} MHz</span>` : '') +
+        `</div>`;
+      csList.prepend(el);
+      csMap[cs] = el;
+
+      // Update tab count badge
+      const total = Object.keys(csMap).length;
+      document.getElementById('cs-count').textContent = total > 0 ? `(${total})` : '';
+    }
   });
 
   // Log entries pushed on connect

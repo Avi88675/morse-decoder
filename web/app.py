@@ -23,10 +23,11 @@ app.config['SECRET_KEY'] = 'cw-decoder-secret'
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
 # Module-level state — populated by setup_decoder()
-_decoder      = None
-_logger       = None
-_source_info  = {}
-_mqtt_client  = None
+_decoder            = None
+_logger             = None
+_source_info        = {}
+_mqtt_client        = None
+_callsign_detector  = None
 
 
 # ── REST endpoints ─────────────────────────────────────────────
@@ -67,6 +68,11 @@ def on_connect():
         factor = _decoder.tone_detector.threshold_factor
         sensitivity = int(round((1.0 - (factor - 0.2) / 0.5) * 100))
         socketio.emit('sensitivity', {'value': sensitivity}, to=request.sid)
+    # Send spotted callsigns so the panel populates on reconnect
+    if _callsign_detector:
+        for entry in _callsign_detector.get_all()[:50]:
+            payload = {k: v for k, v in entry.items() if k != 'last_seen_emitted'}
+            socketio.emit('callsign', payload, to=request.sid)
 
 
 @socketio.on('set_auto_sensitivity')
@@ -118,7 +124,10 @@ def sensitivity():
 
 def setup_decoder(source, decoder, logger, mqtt_host=None, mqtt_port=1883):
     """Wire up decoder callbacks and start the audio source."""
-    global _decoder, _logger, _source_info, _mqtt_client
+    global _decoder, _logger, _source_info, _mqtt_client, _callsign_detector
+
+    from src.callsign import CallsignDetector
+    _callsign_detector = CallsignDetector()
 
     _decoder     = decoder
     _logger      = logger
@@ -145,6 +154,11 @@ def setup_decoder(source, decoder, logger, mqtt_host=None, mqtt_port=1883):
         if _logger:
             _logger.on_character(char)
 
+        # Callsign detection
+        if _callsign_detector:
+            _callsign_detector.frequency_mhz = _source_info.get('frequency_mhz', 0.0)
+            _callsign_detector.feed(char)
+
         # MQTT publish
         if _mqtt_client:
             try:
@@ -170,6 +184,16 @@ def setup_decoder(source, decoder, logger, mqtt_host=None, mqtt_port=1883):
             payload['auto'] = auto
         socketio.emit('signal', payload)
 
+    def on_callsign(entry: dict):
+        socketio.emit('callsign', entry)
+        if _mqtt_client:
+            try:
+                import json
+                _mqtt_client.publish('morse/rx/callsign', json.dumps(entry))
+            except Exception:
+                pass
+
+    _callsign_detector.on_callsign(on_callsign)
     decoder.on_character(on_character)
     decoder.on_signal_state(on_signal)
     source.start(decoder.feed)
