@@ -274,6 +274,21 @@
       <div class="stat-label">SIGNAL</div>
       <div id="signal-bar"></div>
     </div>
+
+    <div class="stat" style="min-width:140px">
+      <div class="stat-label">SENSITIVITY</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:10px;color:var(--green-mid)">HI</span>
+        <input type="range" id="sensitivity-slider" min="0" max="100" value="50"
+          style="width:55px;accent-color:var(--green);cursor:pointer">
+        <span style="font-size:10px;color:var(--green-mid)">LO</span>
+        <button id="auto-btn"
+          style="font-family:'Share Tech Mono',monospace;font-size:10px;
+                 letter-spacing:2px;padding:2px 6px;cursor:pointer;
+                 border:1px solid var(--green);background:var(--green);
+                 color:var(--bg);transition:all 0.2s">AUTO</button>
+      </div>
+    </div>
   </div>
 
   <!-- ── Body ── -->
@@ -381,22 +396,65 @@
     appendChar(data.char);
   });
 
-  // Signal state: frequency, strength, key on/off, WPM
-  socket.on('signal', data => {
-    if (data.frequency > 0) {
-      document.getElementById('stat-freq').textContent =
-        data.frequency.toFixed(1) + ' Hz';
-    }
-    if (data.wpm > 0) {
-      document.getElementById('stat-wpm').textContent = data.wpm;
-    }
-    updateSignal(data.strength);
-    keyDot.classList.toggle('active', data.active);
-  });
-
   // Log entries pushed on connect
   socket.on('log_entry', entry => {
     addLogEntry(entry, false);
+  });
+
+  // Sync slider when server sends current sensitivity
+  socket.on('sensitivity', data => {
+    slider.value = data.value;
+    if (data.auto !== undefined) setAutoUI(data.auto);
+  });
+
+  // Sensitivity update piggy-backed on signal events
+  socket.on('signal', data => {
+    if (data.frequency > 0)
+      document.getElementById('stat-freq').textContent = data.frequency.toFixed(1) + ' Hz';
+    if (data.wpm > 0)
+      document.getElementById('stat-wpm').textContent = data.wpm;
+    updateSignal(data.strength);
+    keyDot.classList.toggle('active', data.active);
+    // Auto slider tracking
+    if (data.sensitivity !== undefined) slider.value = data.sensitivity;
+    if (data.auto !== undefined) setAutoUI(data.auto);
+  });
+
+  // ── Sensitivity slider + AUTO button ─────────────────────
+  const slider  = document.getElementById('sensitivity-slider');
+  const autoBtn = document.getElementById('auto-btn');
+  let isAuto    = true;   // matches server default
+  let sliderTimer = null;
+
+  function setAutoUI(on) {
+    isAuto = on;
+    if (on) {
+      autoBtn.style.background    = 'var(--green)';
+      autoBtn.style.color         = 'var(--bg)';
+      autoBtn.style.borderColor   = 'var(--green)';
+      slider.style.opacity        = '0.4';
+      slider.style.pointerEvents  = 'none';
+    } else {
+      autoBtn.style.background    = 'transparent';
+      autoBtn.style.color         = 'var(--green)';
+      autoBtn.style.borderColor   = 'var(--green-mid)';
+      slider.style.opacity        = '1';
+      slider.style.pointerEvents  = 'auto';
+    }
+  }
+
+  autoBtn.addEventListener('click', () => {
+    const enabling = !isAuto;
+    socket.emit('set_auto_sensitivity', { enabled: enabling });
+    setAutoUI(enabling);
+  });
+
+  slider.addEventListener('input', () => {
+    if (isAuto) return;   // shouldn't fire (pointer-events:none), but guard anyway
+    clearTimeout(sliderTimer);
+    sliderTimer = setTimeout(() => {
+      socket.emit('set_sensitivity', { value: parseInt(slider.value) });
+    }, 150);
   });
 
   // ── Load logs via REST ────────────────────────────────────

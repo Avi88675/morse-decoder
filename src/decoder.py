@@ -48,8 +48,11 @@ class ToneDetector:
     HISTORY_LEN = 200
 
     def __init__(self):
-        self.detected_freq = 750.0
-        self.signal_level  = 0.0
+        self.detected_freq    = 750.0
+        self.signal_level     = 0.0
+        self.threshold_factor = 0.4   # 0.2=very sensitive … 0.7=noise resistant
+                                      # Adjustable live from the UI
+        self.auto_sensitivity = True  # Auto mode on by default
 
         # Large buffer for periodic frequency auto-detection via FFT
         self._freq_buffer   = deque(maxlen=8192)
@@ -132,8 +135,19 @@ class ToneDetector:
         spread    = peak_est - noise_est
 
         if spread > noise_est * 0.3:
-            # Clear on/off signal — set threshold between noise and peak
-            self._threshold = noise_est + spread * 0.4
+            # Clear on/off signal — set threshold between noise and peak.
+            # threshold_factor: higher = less sensitive, lower = more sensitive.
+
+            if self.auto_sensitivity:
+                # Auto mode: use SNR to set threshold dynamically.
+                # Strong clean signal (high spread/noise ratio) → raise threshold
+                # to reject background crackle. Weak/no signal → lower threshold
+                # to stay sensitive. Smoothed with EWMA to avoid oscillation.
+                snr_ratio = min(spread / (noise_est + 1e-10), 6.0) / 6.0  # 0–1
+                target    = 0.22 + snr_ratio * 0.38   # 0.22 (sensitive) → 0.60 (resistant)
+                self.threshold_factor = 0.97 * self.threshold_factor + 0.03 * target
+
+            self._threshold = noise_est + spread * self.threshold_factor
         else:
             # No clear signal — conservative high threshold (nothing decoded)
             self._threshold = noise_est * 2.0
